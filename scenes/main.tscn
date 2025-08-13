@@ -1,6 +1,22 @@
-[gd_scene load_steps=2 format=3 uid="uid://rvrb2u87rciw"]
+[gd_scene load_steps=3 format=3 uid="uid://rvrb2u87rciw"]
 
-[ext_resource type="Script" uid="uid://dvygkwnrwo3kp" path="res://scripts/map.gd" id="1_o5qli"]
+[ext_resource type="Script" uid="uid://7ud1viyl2ku3" path="res://scripts/game_handler.gd" id="1_o5qli"]
+[ext_resource type="TileSet" uid="uid://bv7uf73jrn8fo" path="res://assets/tiles/tiles.tres" id="2_tileset"]
 
 [node name="Main" type="Node2D"]
+
+[node name="GameManager" type="Node2D" parent="."]
 script = ExtResource("1_o5qli")
+
+[node name="TileMapLayers" type="Node2D" parent="GameManager"]
+
+[node name="GroundLayer" type="TileMapLayer" parent="GameManager/TileMapLayers"]
+z_index = -1
+tile_set = ExtResource("2_tileset")
+
+[node name="BlockLayer" type="TileMapLayer" parent="GameManager/TileMapLayers"]
+tile_set = ExtResource("2_tileset")
+
+[node name="EvilLayer" type="TileMapLayer" parent="GameManager/TileMapLayers"]
+z_index = 1
+tile_set = ExtResource("2_tileset")
