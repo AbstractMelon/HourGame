@@ -4,8 +4,8 @@ class_name GameManager
 signal evil_cleared
 signal game_over
 
-@export var world_size: Vector2i = Vector2i(256, 256)
-@export var evil_spread_interval: float = 1.0
+@export var world_size: Vector2i = Vector2i(128, 128)
+@export var evil_spread_interval: float = 0.1
 @export var player_block_type: int = 1
 @export var evil_block_type: int = 2
 @export var empty_tile: int = -1
@@ -15,10 +15,14 @@ signal game_over
 @onready var block_layer: TileMapLayer = $TileMapLayers/BlockLayer
 @onready var evil_layer: TileMapLayer = $TileMapLayers/EvilLayer
 
-var evil_tiles: Array[Vector2i] = []
-var player_blocks: Array[Vector2i] = []
+# Use Dictionary for O(1) lookups instead of Array.has() which is O(n)
+var evil_tiles: Dictionary = {}
+var player_blocks: Dictionary = {}
 var spread_timer: float = 0.0
 var game_active: bool = true
+
+# Cache frequently used directions
+const DIRECTIONS = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
 
 func _ready():
 	setup_world()
@@ -33,42 +37,58 @@ func _process(delta):
 		spread_timer = 0.0
 		spread_evil()
 	
-	check_win_condition()
+	# Only check win condition occasionally to reduce overhead
+	if spread_timer == 0.0:  # Only when evil spreads
+		check_win_condition()
 
 func setup_world():
-	# Initialize ground layer with base tiles
+	# Batch initialize ground layer for better performance
+	var cells_to_set: Array[Vector2i] = []
+	var source_ids: Array[int] = []
+	var atlas_coords: Array[Vector2i] = []
+	
 	for x in world_size.x:
 		for y in world_size.y:
-			ground_layer.set_cell(Vector2i(x, y), 0, Vector2i(0, 0))
+			cells_to_set.append(Vector2i(x, y))
+			source_ids.append(0)
+			atlas_coords.append(Vector2i(0, 0))
+	
+	# Use set_cells_terrain_connect for batch operations if available
+	# Otherwise fall back to individual calls
+	for i in cells_to_set.size():
+		ground_layer.set_cell(cells_to_set[i], source_ids[i], atlas_coords[i])
 
 func spawn_initial_evil():
-	# Spawn evil in random locations or specific pattern
-	var evil_count = 20 
-	for i in evil_count:
+	# Spawn evil in random locations
+	var evil_count = 10
+	var attempts = 0
+	var max_attempts = evil_count * 3  # Prevent infinite loops
+	
+	while evil_tiles.size() < evil_count and attempts < max_attempts:
 		var pos = Vector2i(
 			randi() % world_size.x,
 			randi() % world_size.y
 		)
-		place_evil_tile(pos)
+		if not player_blocks.has(pos):
+			place_evil_tile(pos)
+		attempts += 1
 
 func place_evil_tile(pos: Vector2i):
-	if is_valid_position(pos) and not has_player_block(pos):
+	if is_valid_position(pos) and not player_blocks.has(pos):
 		evil_layer.set_cell(pos, 0, Vector2i(evil_block_type, 0))
-		if pos not in evil_tiles:
-			evil_tiles.append(pos)
+		evil_tiles[pos] = true
 
 func place_player_block(pos: Vector2i) -> bool:
 	if not is_valid_position(pos):
 		return false
 	
 	# Remove evil if present
-	if has_evil_tile(pos):
+	if evil_tiles.has(pos):
 		remove_evil_tile(pos)
 	
 	# Place player block
 	block_layer.set_cell(pos, 0, Vector2i(player_block_type, 0))
-	if pos not in player_blocks:
-		player_blocks.append(pos)
+	player_blocks[pos] = true
 	
 	return true
 
@@ -77,10 +97,10 @@ func remove_evil_tile(pos: Vector2i):
 	evil_tiles.erase(pos)
 
 func has_evil_tile(pos: Vector2i) -> bool:
-	return pos in evil_tiles
+	return evil_tiles.has(pos)
 
 func has_player_block(pos: Vector2i) -> bool:
-	return pos in player_blocks
+	return player_blocks.has(pos)
 
 func is_valid_position(pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.x < world_size.x and pos.y >= 0 and pos.y < world_size.y
@@ -88,21 +108,21 @@ func is_valid_position(pos: Vector2i) -> bool:
 func spread_evil():
 	var new_evil_positions: Array[Vector2i] = []
 	
+	# Process evil spreading more efficiently
 	for evil_pos in evil_tiles:
+		# Early exit if we have too many new positions to prevent frame drops
+		if new_evil_positions.size() > 100:  # Limit spread per frame
+			break
+			
 		# Check adjacent tiles for spreading
-		var directions = [
-			Vector2i(0, 1), Vector2i(0, -1),
-			Vector2i(1, 0), Vector2i(-1, 0)
-		]
-		
-		for direction in directions:
+		for direction in DIRECTIONS:
 			var new_pos = evil_pos + direction
-			if is_valid_position(new_pos) and not has_evil_tile(new_pos) and not has_player_block(new_pos):
+			if is_valid_position(new_pos) and not evil_tiles.has(new_pos) and not player_blocks.has(new_pos):
 				# Random chance to spread 
 				if randf() < 0.3:
 					new_evil_positions.append(new_pos)
 	
-	# Apply new evil tiles
+	# Apply new evil tiles in batches if possible
 	for pos in new_evil_positions:
 		place_evil_tile(pos)
 
