@@ -5,7 +5,7 @@ signal evil_cleared
 signal game_over
 
 @export var world_size: Vector2i = Vector2i(128, 128)
-@export var evil_spread_interval: float = 0.1
+@export var evil_spread_interval: float = 1
 @export var player_block_type: int = 1
 @export var evil_block_type: int = 2
 @export var empty_tile: int = -1
